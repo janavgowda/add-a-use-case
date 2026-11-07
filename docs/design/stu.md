@@ -74,7 +74,12 @@ classDiagram
 - **Frontend:**
   - `apis/student` gains `deactivateStudent(studentId)`.
   - `pages/students/EditStudentForm.vue`:
-    - When the student is enabled, the Status switch is disabled and a **Deactivate** button is shown. Clicking it opens an `ElMessageBox.confirm` with the consequence text (step 4), whose buttons are **Deactivate** and **Cancel**. The confirm button is disabled while the request is in flight.
+    - When the student is enabled, the Status switch is disabled and a **Deactivate** button is shown. Clicking it opens an `ElMessageBox.confirm` (step 4), whose buttons are **Deactivate** and **Cancel**. The confirm button is disabled while the request is in flight. Its text names the student and states each consequence in UC-STU-deactivate-student's Associated Information:
+      - she can no longer log in, and a session she has open ends;
+      - she can no longer submit weekly activity reports or peer evaluations;
+      - her teammates no longer evaluate her;
+      - her account, team assignment, and submitted work are kept, and she can be reactivated later;
+      - this is not deletion.
     - When the student is deactivated, no Deactivate button is shown (3a) and the switch stays usable for the interim reactivation.
     - On success it shows "*First Last* has been deactivated." (step 6, and 6a) and closes the dialog, and `Students.vue` reloads the table, as it already does.
   - `pages/evaluations/SubmitTeamsEvaluations.vue` lists only teammates whose `enabled` is true.
@@ -197,13 +202,13 @@ No delta. `PeerEvaluationUser.enabled` already exists on every student and instr
 | FR-SEC-active-account, validator | unit | `ActiveAccountJwtValidator` passes an enabled account, and fails a disabled account and a `userId` that names no account, for a student and for an instructor |
 | Generic update | unit and integration | An instructor's `PUT /students/{id}` with `enabled: false`, or with `enabled` left out, leaves an enabled student enabled; with `enabled: true` on a deactivated student it re-enables her (the interim path); a student's own `PUT` never changes `enabled` |
 | UC-STU 3a | E2E (Cypress, API stubbed) | For a deactivated student the dialog shows no Deactivate button |
-| UC-STU steps 4 and 5 | E2E (Cypress, API stubbed) | Deactivate opens the confirmation with the consequence text; confirming sends one `POST` even when clicked twice, and shows "*First Last* has been deactivated." |
+| UC-STU steps 4 and 5 | E2E (Cypress, API stubbed) | Deactivate opens the confirmation naming the student and each listed consequence; confirming sends one `POST` even when clicked twice, and shows "*First Last* has been deactivated." |
 | UC-STU 5a | E2E (Cypress, API stubbed) | Cancel at the confirmation sends no `POST`, and the student stays enabled |
 | UC-STU interim switch | E2E (Cypress, API stubbed) | The Status switch cannot be turned off for an enabled student |
-| UC-EVA-submit, deactivated evaluatee | integration | A teammate's `POST /evaluations` of a deactivated student is `400` with the deactivated message; a `PUT` of an evaluation of her written before her deactivation is `400` too |
-| UC-EVA-submit, form | E2E (Cypress, API stubbed) | A deactivated teammate is not listed on the peer evaluation form |
-| UC-EVA-section report, past record kept | integration | A student evaluated for `2023-W32` and then deactivated is still listed for `2023-W32`, with the grade and comments from those evaluations |
-| UC-EVA-section report, empty week omitted | integration | A deactivated student with no evaluations for the week is not listed; an active student with none is still listed, as before |
+| UC-EVA-submit-evaluation, deactivated evaluatee | integration | A teammate's `POST /evaluations` of a deactivated student is `400` with the deactivated message; a `PUT` of an evaluation of her written before her deactivation is `400` too |
+| UC-EVA-submit-evaluation, form | E2E (Cypress, API stubbed) | A deactivated teammate is not listed on the peer evaluation form |
+| UC-EVA-section-evaluation-report, past record kept | integration | A student evaluated for `2023-W32` and then deactivated is still listed for `2023-W32`, with the grade and comments from those evaluations |
+| UC-EVA-section-evaluation-report, empty week omitted | integration | A deactivated student with no evaluations for the week is not listed; an active student with none is still listed, as before |
 | Accepted consequence, mid-window | integration | With `2023-W32`'s window open, a teammate evaluates John, then John is deactivated: another teammate who had not evaluated him gets `400`, the first teammate's evaluation is kept, and the `2023-W32` report lists John with that one evaluation |
 
 ## Open questions / risks
