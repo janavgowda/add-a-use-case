@@ -7,6 +7,7 @@ import type {
   DeleteStudentResponse,
   FindStudentByIdResponse,
   UpdateStudentResponse,
+  DeactivateStudentResponse,
   Student,
   RegistrationParams,
   FindStudentByTeamIdResponse
@@ -36,6 +37,11 @@ export const updateStudent = (updatedStudent: Student) =>
     `${API.STUDENTS_ENDPOINT}/${updatedStudent.id}`,
     updatedStudent
   )
+
+// UC-STU-deactivate-student: the only way to set enabled to false. The response message says whether this request
+// deactivated her or she already was (6a).
+export const deactivateStudent = (id: number) =>
+  request.post<any, DeactivateStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}/deactivate`)
 
 export const deleteStudent = (id: number) =>
   request.delete<any, DeleteStudentResponse>(`${API.STUDENTS_ENDPOINT}/${id}`)

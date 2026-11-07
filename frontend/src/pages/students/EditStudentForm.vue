@@ -14,13 +14,28 @@
       <el-input v-model="studentBeingEdited.username"></el-input>
     </el-form-item>
     <el-form-item label="Status:" prop="enabled">
+      <!-- Enable-only: an enabled student is deactivated through the Deactivate button and its confirmation
+           (UC-STU-deactivate-student); a deactivated one may be switched back on (UC-STU-reactivate-student, interim path) -->
       <el-switch
         v-model="studentBeingEdited.enabled"
+        :disabled="loadedEnabled"
         inline-prompt
         active-text="Enabled"
         inactive-text="Disabled"
         style="--el-switch-on-color: #13ce66; --el-switch-off-color: #ff4949"
+        data-cy="student-status"
       />
+      <el-button
+        v-if="loadedEnabled"
+        type="danger"
+        plain
+        size="small"
+        style="margin-left: 12px"
+        data-cy="student-deactivate"
+        @click="confirmDeactivation()"
+      >
+        Deactivate
+      </el-button>
     </el-form-item>
     <el-form-item label="First Name:" prop="firstName">
       <el-input v-model="studentBeingEdited.firstName"></el-input>
@@ -42,11 +57,11 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus'
-import type { Student } from '@/apis/student/types'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { DeactivateStudentResponse, Student } from '@/apis/student/types'
 import type { FormInstance } from 'element-plus'
-import { findStudentById, updateStudent } from '@/apis/student'
-import { ref, onMounted } from 'vue'
+import { deactivateStudent, findStudentById, updateStudent } from '@/apis/student'
+import { h, ref, onMounted } from 'vue'
 
 const { studentId } = defineProps(['studentId'])
 const emit = defineEmits(['close-dialog'])
@@ -61,6 +76,9 @@ const studentBeingEdited = ref<Student>({
   lastName: '',
   email: ''
 })
+
+// The status as loaded, not as the switch currently shows it: it decides whether Deactivate is offered (step 3, 3a)
+const loadedEnabled = ref<boolean>(false)
 
 const studentForm = ref<FormInstance>() // Form reference
 
@@ -98,6 +116,73 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.lastName = result.data.lastName
   studentBeingEdited.value.email = result.data.email
   studentBeingEdited.value.teamName = result.data.teamName
+  loadedEnabled.value = result.data.enabled === true
+}
+
+// The consequences in UC-STU-deactivate-student's Associated Information, shown at step 4
+const DEACTIVATION_CONSEQUENCES = [
+  'They can no longer log in, and any session they have open ends.',
+  'They can no longer submit weekly activity reports or peer evaluations.',
+  'Their teammates no longer evaluate them.',
+  'Their account, team assignment, and submitted work are kept, and they can be reactivated later.',
+  'This is not deletion.'
+]
+
+const ALREADY_DEACTIVATED_MESSAGE = 'Student is already deactivated'
+
+async function confirmDeactivation() {
+  const name = `${studentBeingEdited.value.firstName} ${studentBeingEdited.value.lastName}`
+  let result: DeactivateStudentResponse | undefined
+
+  try {
+    // Steps 4 and 5: warn, list the consequences, and ask for confirmation
+    await ElMessageBox.confirm(
+      h('div', { 'data-cy': 'deactivate-consequences' }, [
+        h('p', 'Deactivating this student has these consequences:'),
+        h(
+          'ul',
+          DEACTIVATION_CONSEQUENCES.map((consequence) => h('li', consequence))
+        )
+      ]),
+      `Deactivate ${name}?`,
+      {
+        type: 'warning',
+        confirmButtonText: 'Deactivate',
+        cancelButtonText: 'Cancel',
+        confirmButtonClass: 'el-button--danger deactivate-confirm',
+        cancelButtonClass: 'deactivate-cancel',
+        beforeClose: async (action, instance, done) => {
+          if (action !== 'confirm') {
+            done()
+            return
+          }
+          instance.confirmButtonLoading = true // A loading button is disabled, so a second click sends nothing
+          try {
+            result = await deactivateStudent(studentBeingEdited.value.id as number)
+          } catch {
+            // The shared request instance has already reported the error
+          } finally {
+            instance.confirmButtonLoading = false
+            done()
+          }
+        }
+      }
+    )
+  } catch {
+    return // 5a: cancelled at the warning; nothing was sent and the dialog stays open
+  }
+
+  if (!result) {
+    return
+  }
+  // Step 6, or 6a when another course admin or instructor deactivated them first
+  const deactivatedName = `${result.data.firstName} ${result.data.lastName}`
+  if (result.message === ALREADY_DEACTIVATED_MESSAGE) {
+    ElMessage.success(`${deactivatedName} is already deactivated.`)
+  } else {
+    ElMessage.success(`${deactivatedName} has been deactivated.`)
+  }
+  emit('close-dialog')
 }
 
 onMounted(() => {
