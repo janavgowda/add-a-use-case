@@ -195,7 +195,9 @@ async function updateExistingStudent() {
   const updatedStudent: Student = {
     id: studentBeingEdited.value.id,
     username: studentBeingEdited.value.username,
-    enabled: studentBeingEdited.value.enabled,
+    // true only to reactivate a student loaded as deactivated; the backend ignores false, so a student loaded as
+    // enabled who was deactivated since is never silently re-enabled by an unrelated edit
+    enabled: !loadedEnabled.value && studentBeingEdited.value.enabled === true,
     firstName: studentBeingEdited.value.firstName,
     lastName: studentBeingEdited.value.lastName,
     email: studentBeingEdited.value.email

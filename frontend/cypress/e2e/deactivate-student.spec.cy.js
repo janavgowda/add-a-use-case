@@ -99,6 +99,25 @@ describe('Deactivate a student', () => {
     cy.get('[data-cy=student-deactivate]').should('be.visible') // The dialog stays open
   })
 
+  it('never sends enabled: true for a student it loaded as enabled, so an edit cannot undo a later deactivation', () => {
+    cy.intercept('PUT', '**/students/4', { body: found(john) }).as('update')
+    openStudent(john)
+
+    cy.get('.el-dialog').find('button').contains('Confirm').click()
+
+    cy.wait('@update').its('request.body.enabled').should('eq', false)
+  })
+
+  it('sends enabled: true when the instructor switches on a student loaded as deactivated', () => {
+    cy.intercept('PUT', '**/students/4', { body: found(john) }).as('update')
+    openStudent({ ...john, enabled: false })
+
+    cy.get('[data-cy=student-status]').click()
+    cy.get('.el-dialog').find('button').contains('Confirm').click()
+
+    cy.wait('@update').its('request.body.enabled').should('eq', true)
+  })
+
   it('says the student is already deactivated when someone else got there first (6a)', () => {
     cy.intercept('POST', '**/students/4/deactivate', { body: deactivated('Student is already deactivated') }).as(
       'already'
