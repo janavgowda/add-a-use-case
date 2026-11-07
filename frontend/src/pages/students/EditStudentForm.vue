@@ -79,6 +79,8 @@ const studentBeingEdited = ref<Student>({
 
 // The status as loaded, not as the switch currently shows it: it decides whether Deactivate is offered (step 3, 3a)
 const loadedEnabled = ref<boolean>(false)
+// The name as stored, not as the editable fields show it: the step-4 warning must name the student being deactivated
+const loadedName = ref<string>('')
 
 const studentForm = ref<FormInstance>() // Form reference
 
@@ -117,6 +119,7 @@ async function loadStudent(studentId: number) {
   studentBeingEdited.value.email = result.data.email
   studentBeingEdited.value.teamName = result.data.teamName
   loadedEnabled.value = result.data.enabled === true
+  loadedName.value = `${result.data.firstName} ${result.data.lastName}`
 }
 
 // The consequences in UC-STU-deactivate-student's Associated Information, shown at step 4
@@ -131,7 +134,7 @@ const DEACTIVATION_CONSEQUENCES = [
 const ALREADY_DEACTIVATED_MESSAGE = 'Student is already deactivated'
 
 async function confirmDeactivation() {
-  const name = `${studentBeingEdited.value.firstName} ${studentBeingEdited.value.lastName}`
+  const name = loadedName.value
   let result: DeactivateStudentResponse | undefined
 
   try {

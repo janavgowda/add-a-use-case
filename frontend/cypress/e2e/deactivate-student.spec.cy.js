@@ -87,6 +87,15 @@ describe('Deactivate a student', () => {
     cy.get('@deactivate.all').should('have.length', 1)
   })
 
+  it('names the stored student in the warning, not unsaved edits to the name fields (step 4)', () => {
+    openStudent(john)
+    cy.get('.el-form-item').contains('First Name:').parent().find('input').clear().type('Jonathan')
+
+    cy.get('[data-cy=student-deactivate]').click()
+
+    cy.get('.el-message-box').should('contain', 'Deactivate John Smith?').and('not.contain', 'Jonathan')
+  })
+
   it('sends nothing and leaves the student enabled when cancelled at the warning (5a)', () => {
     openStudent(john)
     cy.get('[data-cy=student-deactivate]').click()
