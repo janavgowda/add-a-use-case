@@ -2354,7 +2354,7 @@ Report generating algorithm: For each individual criterion score (e.g., Quality 
 
 **Priority:** High
 **Frequency of Use:** Approximately 2 users, average of 1 usage per week.
-**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation)
+**Business Rules:** BR-section-scoped-access (the instructor may generate the report only for a course section she is assigned to), BR-evaluation-private-comment, BR-submission-owed (who has not turned in the peer evaluation), BR-student-lifecycle (a deactivated student's past evaluations are kept)
 
 **Associated Information:**
 
@@ -2374,6 +2374,8 @@ An example of the generated report:
 | Lily Fisher | … | … | … | … |
 
 The report shall show who did not turn in the peer evaluation for that week, meaning the students who owe it (BR-submission-owed).
+
+Deactivated students: the report lists a deactivated student for every week in which at least one peer evaluation of her exists, so her past evaluations stay in the team's record. It omits her only for a week in which none exists, rather than showing a grade computed from no evaluations. She never appears among the students who did not turn in the peer evaluation (BR-submission-owed, BR-student-lifecycle).
 
 Report generating algorithm: How to compute the peer evaluation grade for a student? Each student receives multiple peer evaluations from her teammates every week. First, obtain the peer evaluations received by a student for that week. For each peer evaluation, compute a total score by adding up the individual criterion scores. Then compute the average of the total scores across the peer evaluations. For example, John Doe receives two peer evaluations from Tim Smith and Lily Fisher, respectively. Tim Smith gives the following scores based on the rubric: 10, 9, 10, 9, 10, 10. So the total score given by Tim is 58. Lily Fisher gives the following scores based on the rubric: 5, 5, 10, 10, 10, 10. So the total score given by Tim is 50. The grade that John Doe receives that week is (58 + 50) / 2 = 54.
 
