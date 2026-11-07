@@ -2239,12 +2239,12 @@ Report generating algorithm: N/A
 
 **Priority:** High
 **Frequency of Use:** Approximately 35-40 users, 1 usage per week.
-**Business Rules:** BR-team-scoped-access (the student evaluates the members of a team she belongs to, and no other team), BR-team-assignment-required (only a student assigned to a team submits one), BR-active-weeks, BR-evaluation-editable-until-close, BR-evaluation-submission-window, BR-evaluation-private-comment
+**Business Rules:** BR-team-scoped-access (the student evaluates the members of a team she belongs to, and no other team), BR-team-assignment-required (only a student assigned to a team submits one), BR-active-weeks, BR-evaluation-editable-until-close, BR-evaluation-submission-window, BR-evaluation-private-comment, BR-student-lifecycle (a deactivated teammate is not evaluated)
 
 **Associated Information:**
 
 Details:
-- Every team member MUST be evaluated.
+- Every team member whose account is active MUST be evaluated. A deactivated teammate is not listed and cannot be evaluated (BR-student-lifecycle); evaluations of her submitted before she was deactivated are kept.
 - Scores MUST be integers.
 
 Example (each team member, self included, is evaluated on every rubric criterion):
