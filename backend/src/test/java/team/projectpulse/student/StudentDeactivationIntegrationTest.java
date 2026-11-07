@@ -20,6 +20,7 @@ import team.projectpulse.system.StatusCode;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -193,11 +194,18 @@ class StudentDeactivationIntegrationTest extends AbstractIntegrationTest {
 
     @Test
     void testDeactivatedStudentsOpenSessionEnds() throws Exception {
+        // Before: John's token reaches a route he may call, his own student record
+        this.mockMvc.perform(get(this.baseUrl + "/students/" + JOHN).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.johnToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true));
+
         deactivate(JOHN, this.billToken).andExpect(status().isOk());
 
-        // The token John obtained before his deactivation (FR-SEC-active-account)
-        this.mockMvc.perform(post(this.baseUrl + "/students/" + JOHN + "/deactivate").header(HttpHeaders.AUTHORIZATION, this.johnToken))
-                .andExpect(status().isUnauthorized());
+        // After: the same request with the same token, obtained before his deactivation, is refused (FR-SEC-active-account)
+        this.mockMvc.perform(get(this.baseUrl + "/students/" + JOHN).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.johnToken))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.UNAUTHORIZED));
     }
 
     // ---- Who may not (BR-student-lifecycle, BR-section-scoped-access, BR-role-based-access) ----
