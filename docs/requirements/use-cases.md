@@ -1476,6 +1476,9 @@ Details:
 - **3a. The student is already deactivated:**
   - 3a1. The system shows that the student is deactivated and offers no deactivation; reactivating her is UC-STU-reactivate-student: Reactivate a student.
   - 3a2. Use case ends.
+- **5a. The course admin or instructor cancels at the warning:**
+  - 5a1. The system leaves the student's account unchanged.
+  - 5a2. Use case ends.
 - **6a. Another course admin or instructor deactivated the student after step 2:**
   - 6a1. The system leaves the student deactivated and informs the course admin or instructor that she is deactivated.
   - 6a2. Use case ends.
