@@ -687,6 +687,28 @@ class EvaluationServiceTest {
     }
 
     @Test
+    void testGenerateWeeklyPeerEvaluationReportForSectionKeepsDeactivatedStudentEvaluatedWithoutComments() {
+        // Given: Eric (4) is deactivated and was evaluated this week, but none of his evaluators left a comment
+        this.eric.setEnabled(false);
+        this.ericsW31Evaluations.forEach(evaluation -> {
+            evaluation.setPublicComment(null);
+            evaluation.setPrivateComment(null);
+        });
+        given(this.sectionRepository.findById(anyInt())).willReturn(Optional.of(new Section("2023-2024", LocalDate.of(2023, 8, 14), LocalDate.of(2024, 4, 29), true, DayOfWeek.MONDAY, LocalTime.of(23, 59), DayOfWeek.TUESDAY, LocalTime.of(23, 59))));
+        given(this.studentRepository.findBySectionSectionId(anyInt())).willReturn(this.students);
+        given(this.evaluationRepository.findByWeekAndEvaluateeId(anyString(), anyInt())).willReturn(List.of());
+        given(this.evaluationRepository.findByWeekAndEvaluateeId("2023-W31", 4)).willReturn(this.ericsW31Evaluations);
+
+        // When
+        WeeklyPeerEvaluationReport report = this.evaluationService.generateWeeklyPeerEvaluationReportForSection(2, "2023-W31");
+
+        // Then: whether he is kept depends on the evaluations, not on whether they carry comments
+        assertThat(report.getPeerEvaluationAverages()).filteredOn(average -> average.getStudentId() == 4)
+                .singleElement()
+                .satisfies(average -> assertThat(average.getAverageTotalScore()).isCloseTo(50.0, within(0.01)));
+    }
+
+    @Test
     void testGenerateWeeklyPeerEvaluationSummaryForStudent() {
         // Given
         given(this.studentRepository.findById(4)).willReturn(Optional.of(this.eric));

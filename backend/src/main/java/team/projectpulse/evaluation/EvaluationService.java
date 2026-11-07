@@ -188,8 +188,10 @@ public class EvaluationService {
 
     public PeerEvaluationAverage getPeerEvaluationAverage(String week, Student student) {
         // Get all evaluations for the student in the given week
-        List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+        return averageOf(week, student, this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId()));
+    }
 
+    private PeerEvaluationAverage averageOf(String week, Student student, List<PeerEvaluation> evaluations) {
         PeerEvaluationAverage peerEvaluationAverage = new PeerEvaluationAverage();
 
         peerEvaluationAverage.setStudentId(student.getId());
@@ -244,12 +246,12 @@ public class EvaluationService {
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
         students.forEach(student -> {
-            PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
+            List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
             // A deactivated student is kept for a week only if someone evaluated her in it (BR-student-lifecycle): her
-            // past record stays, but a week nobody could evaluate her in is not shown as a 0 grade. There is one public
-            // comment entry per evaluation, so an empty list means no evaluation of her exists for the week.
-            if (student.isEnabled() || !peerEvaluationAverage.getPublicComments().isEmpty()) {
-                report.getPeerEvaluationAverages().add(peerEvaluationAverage);
+            // past record stays, but a week nobody could evaluate her in is not shown as a 0 grade. Decided from the
+            // evaluations themselves, not from a derived field such as her public comments.
+            if (student.isEnabled() || !evaluations.isEmpty()) {
+                report.getPeerEvaluationAverages().add(averageOf(week, student, evaluations));
             }
         });
 
