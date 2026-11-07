@@ -4,11 +4,11 @@
 > Depends on: FR-SEC-active-account, BR-student-lifecycle, BR-section-scoped-access, BR-role-based-access, BR-submission-owed, BR-evaluation-submission-window, BR-team-assignment-required
 > Consequences in another area: UC-EVA-submit-evaluation, UC-EVA-section-evaluation-report (see *Consequences in the evaluation slice*)
 > See: [use cases](../requirements/use-cases.md#student), [SRS security requirements](../requirements/software-requirements-specification.md#security-and-authorization-requirements), [architectural-design.md](architectural-design.md#authentication) (Authentication › Account status, Authorization, foundation component view)
-> Designed against `main` at `59f0267` (2026-11-06).
+> Designed against `main` at `59f0267` (2026-11-06). Built on `implement/uc-stu-deactivate-student` (2026-11-06); this doc describes what was built.
 
 ## Overview
 
-This area covers the student account in the `student` slice of the foundation (REST API container). This design adds one action, deactivating a student, as its own endpoint with its own confirmation. Before this design the only way to deactivate a student was the Status switch in the generic *Edit a student* dialog. That switch showed no consequences and asked for no confirmation. Its route refused a course admin who is not assigned to the student's course section. It deactivated a student whenever an instructor's update left `enabled` out, because `StudentDto.enabled` is a primitive `boolean`. And a deactivated student kept working until her token expired, because only login checked the flag.
+This area covers the student account in the `student` slice of the foundation (REST API container). This design adds one action, deactivating a student, as its own endpoint with its own confirmation. Before this design the only way to deactivate a student was the Status switch in the generic *Edit a student* dialog. That switch showed no consequences and asked for no confirmation. Its route refused a course admin who is not assigned to the student's course section. It disabled a student whenever an instructor's update carried `enabled: false`, which the dialog also sent for a student it had loaded as disabled. And a deactivated student kept working until her token expired, because only login checked the flag.
 
 Deactivation has two consequences outside this slice, both decided by BR-student-lifecycle:
 - teammates stop evaluating her;
@@ -28,8 +28,17 @@ classDiagram
     }
     class StudentService {
         <<reused, student>>
-        +deactivateStudent(studentId) Student NEW
+        +deactivateStudent(studentId) StudentDeactivation NEW
         +updateStudent(studentId, Student) Student CHANGED
+    }
+    class StudentDeactivation {
+        <<new record, student>>
+        +student Student
+        +changed boolean
+    }
+    class StudentRepository {
+        <<reused, student>>
+        +findByIdInCallerScope(studentId, userId) Optional~Student~ NEW
     }
     class StudentSecurityService {
         <<reused, student>>
@@ -56,6 +65,8 @@ classDiagram
         +generateWeeklyPeerEvaluationReportForSection(sectionId, week) CHANGED
     }
     StudentController --> StudentService
+    StudentService --> StudentRepository
+    StudentService ..> StudentDeactivation
     StudentInstructorAuthorizationManager --> StudentSecurityService
     StudentCourseAdminAuthorizationManager --> StudentSecurityService
     ActiveAccountJwtValidator --> UserRepository
@@ -65,7 +76,7 @@ classDiagram
   - `StudentController.deactivateStudent`
   - `StudentService.deactivateStudent`:
     - loads the student through a caller-scoped finder, `StudentRepository.findByIdInCallerScope(studentId, userId)`. This is a `@Query` matching the student only when the caller is one of her course section's instructors or her course's admin, with `userId` from `UserUtils.getUserId()`. Not finding her raises `ObjectNotFoundException` (`404`), which happens only when she is deleted between the route rule and the query;
-    - sets `enabled` to false and saves, and returns whether anything changed, so the controller can tell step 6 from 6a.
+    - sets `enabled` to false and saves, and returns a `StudentDeactivation(student, changed)` record, so the controller can tell step 6 from 6a. `changed` is false when she was already deactivated, and then nothing is saved.
   - `StudentSecurityService.isCurrentUserAdminOfStudentCourse`: student → `section` → `course` → `courseAdmin`, compared with `UserUtils.getUserId()`. It returns `false` for an unknown id and never throws. `Student.section`, `Section.course` and `Course.courseAdmin` are all `optional = false`, so only the student lookup needs a null check.
   - `security/authorizationmanagers/StudentCourseAdminAuthorizationManager`: reads `studentId` with `PathVariables.readId` and delegates to that method.
   - `security/ActiveAccountJwtValidator`: see [Authentication › Account status](architectural-design.md#authentication). It is registered on `SecurityConfiguration.jwtDecoder()` through `DelegatingOAuth2TokenValidator` together with `JwtValidators.createDefault()`.
@@ -139,14 +150,14 @@ sequenceDiagram
 | Endpoint or job | Caller (who may) | Request | Success | Errors, by extension |
 |---|---|---|---|---|
 | `POST /api/v1/students/{studentId}/deactivate` | An instructor assigned to the student's course section, or the course admin of the student's course (assigned to the course section or not), per BR-student-lifecycle, BR-section-scoped-access, BR-role-based-access: `AuthorizationManagers.anyOf(studentInstructorAuthorizationManager, studentCourseAdminAuthorizationManager)`, added before the `denyAll()` catch-all | No body | `200`, `data` the `StudentDto` with `enabled: false`, message "Deactivate student successfully" (step 6) or "Student is already deactivated" (6a); the SPA tells the two apart by the message | A student (herself or another), an instructor of another course section, a course admin of another course, or an id that names no student: `403` with the `Result` envelope (the route rule refuses before the service runs). 3a and 5a send no request |
-| `PUT /api/v1/students/{studentId}` (changed) | Unchanged (`UserOwnershipAuthorizationManager`) | Unchanged | Unchanged, except that `enabled` changes only from false to true and only for a `ROLE_instructor` caller; `enabled: false`, or the field left out, leaves it as it is | Unchanged |
+| `PUT /api/v1/students/{studentId}` (changed) | Unchanged (`UserOwnershipAuthorizationManager`) | Unchanged | Unchanged, except that `enabled` changes only from false to true and only for a `ROLE_instructor` caller; `enabled: false` leaves it as it is. A body that leaves `enabled` out is refused before the service runs (`400` "The request is malformed.": `StudentDto.enabled` is a primitive and Jackson 3 refuses a missing primitive) | Unchanged |
 | Every authenticated `/api/v1` request (changed) | Any bearer token | Unchanged | Unchanged while the token's account is enabled | Account deactivated or gone: `401`, message "The access token provided is expired, revoked, malformed, or invalid for other reasons." |
-| `POST /api/v1/evaluations`, `PUT /api/v1/evaluations/{evaluationId}` (changed) | Unchanged | Unchanged | Unchanged | Evaluatee deactivated: `400` `INVALID_ARGUMENT`, message "*First name* is deactivated and cannot be evaluated." (BR-student-lifecycle; named as an unmet condition, not as a refusal of permission, as BR-team-assignment-required does; first name only, like the existing duplicate-evaluation message). The check runs after every existing check, so a request that fails an earlier one keeps its current message |
+| `POST /api/v1/evaluations`, `PUT /api/v1/evaluations/{evaluationId}` (changed) | Unchanged | Unchanged | Unchanged | Evaluatee deactivated: `400` `INVALID_ARGUMENT`, message "*First name* is deactivated and cannot be evaluated." (BR-student-lifecycle; named as an unmet condition, not as a refusal of permission, as BR-team-assignment-required does; first name only, like the existing duplicate-evaluation message). On `POST` the check runs after every existing check, so a request that fails an earlier one keeps its current message. On `PUT` it runs after the submission-window check and before re-scoring, because re-scoring changes the stored ratings in place before it can refuse a rubric mismatch, so a refused update changes nothing |
 | Section peer evaluation report (changed; the existing report route) | Unchanged | Unchanged | A deactivated student is listed for the week only if at least one evaluation of her exists for it | Unchanged |
 
 ## Key decisions
 
-**A dedicated endpoint, not the generic update.** Deactivation is `POST /students/{studentId}/deactivate`, the only way to set `enabled` to false. Rejected: keeping `enabled` in `PUT /students/{studentId}`. That form cannot show the step-4 consequences. Its route refuses a course admin who is not assigned to the course section. And a primitive `boolean` deactivates anyone whose update leaves the field out.
+**A dedicated endpoint, not the generic update.** Deactivation is `POST /students/{studentId}/deactivate`, the only way to set `enabled` to false. Rejected: keeping `enabled` in `PUT /students/{studentId}`. That form cannot show the step-4 consequences. Its route refuses a course admin who is not assigned to the course section. And it disabled a student whenever the update carried `enabled: false`.
 
 **Repeating the call is idempotent.** A second deactivation returns `200` and the student unchanged (6a). Rejected: `409` on a repeat. Two instructors who both deactivated the same student wanted the same end state, so neither should see an error.
 
@@ -172,7 +183,7 @@ These changes are in `evaluation`, and this design owns them because they are co
 
 - **Who may be evaluated.**
   - `addPeerEvaluation` refuses an evaluatee whose `enabled` is false. The check goes after the same-team check, so a cross-team evaluatee still gets the same-team message.
-  - `updatePeerEvaluation` refuses the same, reading the evaluatee from the stored evaluation, never from the payload.
+  - `updatePeerEvaluation` refuses the same, reading the evaluatee from the stored evaluation, never from the payload. It checks before `rescore`, so a refused update leaves the stored evaluation untouched.
   - `SubmitTeamsEvaluations.vue` leaves her off the form, so the form's "every team member" means every active team member (UC-EVA-submit-evaluation, Details). This applies in both of the form's modes:
     - a new submission builds its rows from the active teammates only;
     - an update loads the evaluator's stored evaluations for the week and leaves out any whose evaluatee is deactivated. Such an evaluation stays stored and keeps counting in the reports, but it is not shown and not sent again.
@@ -217,7 +228,7 @@ No delta. `PeerEvaluationUser.enabled` already exists on every student and instr
 | UC-STU login refused | integration | After deactivation, John's HTTP Basic login returns `401` "User account is abnormal." |
 | FR-SEC-active-account, open session | integration | A token John obtained before deactivation gets `401` on its next request; a teammate's token still gets `200` |
 | FR-SEC-active-account, validator | unit | `ActiveAccountJwtValidator` passes an enabled account. It fails, with `invalid_token`, a disabled account (student and instructor), a `userId` that names no account, and a token whose `userId` claim is missing or not a number |
-| Generic update | unit and integration | An instructor's `PUT /students/{id}` with `enabled: false`, or with `enabled` left out, leaves an enabled student enabled; with `enabled: true` on a deactivated student it re-enables her (the interim path); a student's own `PUT` never changes `enabled` |
+| Generic update | unit and integration | An instructor's `PUT /students/{id}` with `enabled: false` leaves an enabled student enabled, and one with `enabled` left out is `400` and leaves her enabled; with `enabled: true` on a deactivated student it re-enables her (the interim path); a student's own `PUT` never changes `enabled` |
 | UC-STU 3a | E2E (Cypress, API stubbed) | For a deactivated student the dialog shows the status as Disabled and no Deactivate button |
 | UC-STU steps 4 and 5 | E2E (Cypress, API stubbed) | Deactivate opens the confirmation naming the student and each listed consequence; confirming sends one `POST` even when clicked twice, and shows "*First Last* has been deactivated." |
 | UC-STU 5a | E2E (Cypress, API stubbed) | Cancel at the confirmation sends no `POST`, and the student stays enabled |

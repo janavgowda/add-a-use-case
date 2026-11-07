@@ -72,6 +72,9 @@ public class EvaluationService {
             throw new PeerEvaluationIllegalArgumentException("You have already submitted an evaluation for " + newPeerEvaluation.getEvaluatee().getFirstName() + " in this week.");
         }
 
+        // Checked last, so a request that fails an earlier check keeps its message
+        requireActiveEvaluatee(newPeerEvaluation.getEvaluatee());
+
         return this.evaluationRepository.save(newPeerEvaluation);
     }
 
@@ -81,6 +84,9 @@ public class EvaluationService {
                     // The week is read off the stored evaluation rather than off the update, because the caller
                     // writes the payload and could otherwise name an open week to reopen a closed evaluation.
                     requireOpenSubmissionWindow(oldEvaluation.getEvaluator().getSection(), oldEvaluation.getWeek(), WINDOW_CLOSED_MESSAGE);
+                    // The evaluatee is read off the stored evaluation, never the payload. Checked before rescore,
+                    // which changes the evaluation's ratings in place, so a refused update changes nothing.
+                    requireActiveEvaluatee(oldEvaluation.getEvaluatee());
                     rescore(oldEvaluation, update.getRatings());
                     oldEvaluation.setPublicComment(update.getPublicComment());
                     oldEvaluation.setPrivateComment(update.getPrivateComment());
@@ -114,6 +120,19 @@ public class EvaluationService {
 
         if (!previousWeek().equals(week)) {
             throw new PeerEvaluationIllegalArgumentException(outOfWindowMessage);
+        }
+    }
+
+    /**
+     * Refuses a peer evaluation of a deactivated student: while she is deactivated her teammates do not evaluate her
+     * (BR-student-lifecycle). The evaluations they wrote of her before are kept. The system records whether she is
+     * deactivated, not when, so this applies to every week alike, including a week whose window is still open
+     * (UC-STU-deactivate-student, Associated Information). Named as an unmet condition, as BR-team-assignment-required
+     * is, rather than as a refusal of permission.
+     */
+    private void requireActiveEvaluatee(Student evaluatee) {
+        if (!evaluatee.isEnabled()) {
+            throw new PeerEvaluationIllegalArgumentException(evaluatee.getFirstName() + " is deactivated and cannot be evaluated.");
         }
     }
 
@@ -169,8 +188,10 @@ public class EvaluationService {
 
     public PeerEvaluationAverage getPeerEvaluationAverage(String week, Student student) {
         // Get all evaluations for the student in the given week
-        List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+        return averageOf(week, student, this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId()));
+    }
 
+    private PeerEvaluationAverage averageOf(String week, Student student, List<PeerEvaluation> evaluations) {
         PeerEvaluationAverage peerEvaluationAverage = new PeerEvaluationAverage();
 
         peerEvaluationAverage.setStudentId(student.getId());
@@ -225,8 +246,13 @@ public class EvaluationService {
 
         // For each student, compute her average total score, collect all public comments and private comments, and compute rating averages for each criterion.
         students.forEach(student -> {
-            PeerEvaluationAverage peerEvaluationAverage = getPeerEvaluationAverage(week, student);
-            report.getPeerEvaluationAverages().add(peerEvaluationAverage);
+            List<PeerEvaluation> evaluations = this.evaluationRepository.findByWeekAndEvaluateeId(week, student.getId());
+            // A deactivated student is kept for a week only if someone evaluated her in it (BR-student-lifecycle): her
+            // past record stays, but a week nobody could evaluate her in is not shown as a 0 grade. Decided from the
+            // evaluations themselves, not from a derived field such as her public comments.
+            if (student.isEnabled() || !evaluations.isEmpty()) {
+                report.getPeerEvaluationAverages().add(averageOf(week, student, evaluations));
+            }
         });
 
         // Who has not submitted is not part of this report: it is BR-submission-owed, which the notification slice
