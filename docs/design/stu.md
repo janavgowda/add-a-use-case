@@ -196,7 +196,7 @@ No delta. `PeerEvaluationUser.enabled` already exists on every student and instr
 - Authentication: the existing bearer entry point and `ExceptionHandlerAdvice` mappings (`InvalidBearerTokenException` → `401`; the login-time `AccountStatusException` → `401` "User account is abnormal.").
 - Seed data: no new rows. Every case is built inside the rolled-back test transaction from the existing `DataInitializer` seed:
   - John is a student in course section 2 of course 1;
-  - Bill Gates (`b.gates`) is an instructor assigned to course section 2;
+  - Bill Gates (`b.gates`) is an instructor of course 1 assigned to course sections 1 and 2; removing him from course section 2 gives the "same course, not assigned" row;
   - Bingyang Wei (`b.wei`) is course 1's admin and is also assigned to course section 2, so the "unassigned course admin" row removes her from course section 2's instructors first;
   - Tim Cook (`t.cook`) is course 3's admin and assigned only to its course section 3, so he serves as both "an instructor of another course section" and "the admin of another course".
   
@@ -209,6 +209,7 @@ No delta. `PeerEvaluationUser.enabled` already exists on every student and instr
 | UC-STU main, assigned instructor | integration | An instructor assigned to John's course section posts `/students/{john}/deactivate`: `200`, `data.enabled` false, and John's account is disabled in the database |
 | UC-STU main, unassigned course admin | integration | The admin of John's course who is not assigned to his course section gets `200` |
 | UC-STU authorization | integration | John himself, another student, an instructor of another course section, and the admin of another course each get `403` with the `Result` envelope; an id that names no student gets `403` |
+| UC-STU authorization, same course, not assigned (BR-student-lifecycle) | integration | Bill Gates, removed from course section 2 inside the test transaction so that he is an instructor of John's course assigned only to course section 1, gets `403`, and John stays enabled |
 | UC-STU 6a | integration | Deactivating an already-deactivated student returns `200` with the message "Student is already deactivated", and she stays deactivated |
 | UC-STU 6a, dialog | E2E (Cypress, API stubbed) | An "already deactivated" response shows "*First Last* is already deactivated." |
 | UC-STU caller-scoped lookup | unit | `deactivateStudent` loads through `findByIdInCallerScope` with the caller's id; an empty result raises `ObjectNotFoundException` |
@@ -217,7 +218,7 @@ No delta. `PeerEvaluationUser.enabled` already exists on every student and instr
 | FR-SEC-active-account, open session | integration | A token John obtained before deactivation gets `401` on its next request; a teammate's token still gets `200` |
 | FR-SEC-active-account, validator | unit | `ActiveAccountJwtValidator` passes an enabled account. It fails, with `invalid_token`, a disabled account (student and instructor), a `userId` that names no account, and a token whose `userId` claim is missing or not a number |
 | Generic update | unit and integration | An instructor's `PUT /students/{id}` with `enabled: false`, or with `enabled` left out, leaves an enabled student enabled; with `enabled: true` on a deactivated student it re-enables her (the interim path); a student's own `PUT` never changes `enabled` |
-| UC-STU 3a | E2E (Cypress, API stubbed) | For a deactivated student the dialog shows no Deactivate button |
+| UC-STU 3a | E2E (Cypress, API stubbed) | For a deactivated student the dialog shows the status as Disabled and no Deactivate button |
 | UC-STU steps 4 and 5 | E2E (Cypress, API stubbed) | Deactivate opens the confirmation naming the student and each listed consequence; confirming sends one `POST` even when clicked twice, and shows "*First Last* has been deactivated." |
 | UC-STU 5a | E2E (Cypress, API stubbed) | Cancel at the confirmation sends no `POST`, and the student stays enabled |
 | UC-STU interim switch | E2E (Cypress, API stubbed) | The Status switch cannot be turned off for an enabled student |
