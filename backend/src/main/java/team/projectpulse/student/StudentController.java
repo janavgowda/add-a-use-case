@@ -70,6 +70,18 @@ public class StudentController {
         return new Result(true, StatusCode.SUCCESS, "Update student successfully", updatedStudentDto);
     }
 
+    /**
+     * UC-STU-deactivate-student, step 6, or 6a when someone else already deactivated her. The SPA tells the two apart
+     * by the message.
+     */
+    @PostMapping("/{studentId}/deactivate")
+    public Result deactivateStudent(@PathVariable Integer studentId) {
+        StudentDeactivation deactivation = this.studentService.deactivateStudent(studentId);
+        StudentDto studentDto = this.studentToStudentDtoConverter.convert(deactivation.student());
+        String message = deactivation.changed() ? "Deactivate student successfully" : "Student is already deactivated";
+        return new Result(true, StatusCode.SUCCESS, message, studentDto);
+    }
+
     @DeleteMapping("/{studentId}")
     public Result deleteStudent(@PathVariable Integer studentId) {
         this.studentService.deleteStudent(studentId);

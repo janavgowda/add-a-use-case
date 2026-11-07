@@ -94,6 +94,8 @@ class StudentDeactivationIntegrationTest extends AbstractIntegrationTest {
     }
 
     boolean johnIsEnabled() {
+        // Flush the request's pending writes to the database, then read John back from it rather than from the cache
+        this.entityManager.flush();
         this.entityManager.clear();
         return this.studentRepository.findById(JOHN).orElseThrow().isEnabled();
     }
@@ -103,6 +105,99 @@ class StudentDeactivationIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.flag").value(false))
                 .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
                 .andExpect(jsonPath("$.message").value("No permission."));
+    }
+
+    // ---- Main success scenario (step 6) ----
+
+    @Test
+    void testInstructorAssignedToHerCourseSectionDeactivatesHer() throws Exception {
+        deactivate(JOHN, this.billToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.id").value(JOHN))
+                .andExpect(jsonPath("$.data.firstName").value("John"))
+                .andExpect(jsonPath("$.data.lastName").value("Smith"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        assertThat(johnIsEnabled()).isFalse();
+    }
+
+    @Test
+    void testCourseAdminNotAssignedToHerCourseSectionDeactivatesHer() throws Exception {
+        unassign(BINGYANG, SECTION_2); // Bingyang is still course 1's admin
+
+        deactivate(JOHN, this.bingyangToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.message").value("Deactivate student successfully"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        assertThat(johnIsEnabled()).isFalse();
+    }
+
+    // ---- 6a: another course admin or instructor deactivated her after step 2 ----
+
+    @Test
+    void testDeactivatingAnAlreadyDeactivatedStudentLeavesHerDeactivated() throws Exception {
+        deactivate(JOHN, this.billToken).andExpect(jsonPath("$.message").value("Deactivate student successfully"));
+
+        deactivate(JOHN, this.bingyangToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.code").value(StatusCode.SUCCESS))
+                .andExpect(jsonPath("$.message").value("Student is already deactivated"))
+                .andExpect(jsonPath("$.data.enabled").value(false));
+
+        assertThat(johnIsEnabled()).isFalse();
+    }
+
+    // ---- POST-1 and the Associated Information: her account, team, and work are kept; she can no longer log in ----
+
+    private long count(String jpql) {
+        return this.entityManager.createQuery(jpql, Long.class).setParameter("id", JOHN).getSingleResult();
+    }
+
+    @Test
+    void testDeactivationKeepsHerTeamAndSubmittedWork() throws Exception {
+        long activities = count("select count(a) from Activity a where a.student.id = :id");
+        long evaluationsWritten = count("select count(e) from PeerEvaluation e where e.evaluator.id = :id");
+        long evaluationsReceived = count("select count(e) from PeerEvaluation e where e.evaluatee.id = :id");
+        assertThat(activities).isPositive();
+        assertThat(evaluationsWritten).isPositive();
+        assertThat(evaluationsReceived).isPositive();
+
+        deactivate(JOHN, this.billToken)
+                .andExpect(jsonPath("$.data.teamName").value("Team1"));
+
+        this.entityManager.flush();
+        this.entityManager.clear();
+        Student john = this.studentRepository.findById(JOHN).orElseThrow();
+        assertThat(john.getTeam()).isNotNull();
+        assertThat(john.getTeam().getTeamName()).isEqualTo("Team1");
+        assertThat(count("select count(a) from Activity a where a.student.id = :id")).isEqualTo(activities);
+        assertThat(count("select count(e) from PeerEvaluation e where e.evaluator.id = :id")).isEqualTo(evaluationsWritten);
+        assertThat(count("select count(e) from PeerEvaluation e where e.evaluatee.id = :id")).isEqualTo(evaluationsReceived);
+    }
+
+    @Test
+    void testDeactivatedStudentCannotLogIn() throws Exception {
+        deactivate(JOHN, this.billToken).andExpect(status().isOk());
+
+        this.mockMvc.perform(post(this.baseUrl + "/users/login").with(httpBasic("j.smith@abc.edu", "123456")))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.UNAUTHORIZED))
+                .andExpect(jsonPath("$.message").value("User account is abnormal."));
+    }
+
+    @Test
+    void testDeactivatedStudentsOpenSessionEnds() throws Exception {
+        deactivate(JOHN, this.billToken).andExpect(status().isOk());
+
+        // The token John obtained before his deactivation (FR-SEC-active-account)
+        this.mockMvc.perform(post(this.baseUrl + "/students/" + JOHN + "/deactivate").header(HttpHeaders.AUTHORIZATION, this.johnToken))
+                .andExpect(status().isUnauthorized());
     }
 
     // ---- Who may not (BR-student-lifecycle, BR-section-scoped-access, BR-role-based-access) ----
