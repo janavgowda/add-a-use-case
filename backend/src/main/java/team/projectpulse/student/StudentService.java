@@ -9,8 +9,6 @@ import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -114,15 +112,36 @@ public class StudentService {
         oldStudent.setLastName(update.getLastName());
         oldStudent.setEmail(update.getEmail());
 
-        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-
-        // If the user is an admin, then the user can update all the fields
-        if (authentication.getAuthorities().stream().anyMatch(grantedAuthority -> grantedAuthority.getAuthority().equals("ROLE_instructor"))) {
-            oldStudent.setEnabled(update.isEnabled());
-//            oldStudent.setRoles(update.getRoles());
+        // The interim reactivation path (UC-STU-reactivate-student, Associated Information): an instructor may enable a
+        // deactivated student here, but never disable one. Deactivation goes only through deactivateStudent, with its
+        // warning and confirmation, so an update carrying enabled: false (as the edit form sends for any deactivated
+        // student) leaves her status as it is.
+        if (update.isEnabled() && !oldStudent.isEnabled() && this.userUtils.hasRole("ROLE_instructor")) {
+            oldStudent.setEnabled(true);
         }
 
         return this.studentRepository.save(oldStudent);
+    }
+
+    /**
+     * Deactivates a student (UC-STU-deactivate-student, step 6). Her account, team assignment, and submitted work
+     * are kept; only {@code enabled} changes, so she can be reactivated as she was. Repeating the call is idempotent:
+     * a student someone else already deactivated is returned unchanged (6a).
+     *
+     * <p>The route rule has already admitted the caller for this student, but the lookup is still scoped to the
+     * caller (architecture-of-record, Authorization, point 2), so not finding her means she is not in the caller's
+     * scope or no longer exists.
+     */
+    public StudentDeactivation deactivateStudent(Integer studentId) {
+        Student student = this.studentRepository.findByIdInCallerScope(studentId, this.userUtils.getUserId())
+                .orElseThrow(() -> new ObjectNotFoundException("student", studentId));
+
+        if (!student.isEnabled()) {
+            return new StudentDeactivation(student, false);
+        }
+
+        student.setEnabled(false);
+        return new StudentDeactivation(this.studentRepository.save(student), true);
     }
 
     public void deleteStudent(Integer studentId) {

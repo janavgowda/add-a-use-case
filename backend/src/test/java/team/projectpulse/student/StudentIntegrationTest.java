@@ -21,6 +21,7 @@ import org.springframework.util.MultiValueMap;
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -35,6 +36,9 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
     JsonMapper jsonMapper;
+
+    @Autowired
+    StudentRepository studentRepository;
 
     String adminToken;
 
@@ -268,6 +272,50 @@ class StudentIntegrationTest extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.code").value(StatusCode.FORBIDDEN))
                 .andExpect(jsonPath("$.message").value("No permission."))
                 .andExpect(jsonPath("$.data").value("Access Denied"));
+    }
+
+    private Map<String, Object> johnUpdate() {
+        Map<String, Object> studentDto = new HashMap<>();
+        studentDto.put("username", "j.smith@abc.edu");
+        studentDto.put("firstName", "John");
+        studentDto.put("lastName", "Smith");
+        studentDto.put("email", "j.smith@abc.edu");
+        return studentDto;
+    }
+
+    @Test
+    void testInstructorUpdateWithEnabledFalseLeavesStudentEnabled() throws Exception {
+        Map<String, Object> studentDto = johnUpdate();
+        studentDto.put("enabled", false); // Deactivation goes only through POST /students/{studentId}/deactivate
+
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(studentDto)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.enabled").value(true));
+    }
+
+    @Test
+    void testInstructorUpdateWithEnabledLeftOutLeavesStudentEnabled() throws Exception {
+        // StudentDto.enabled is a primitive, and Jackson 3 refuses a missing primitive rather than defaulting it to false
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(johnUpdate())).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(false))
+                .andExpect(jsonPath("$.code").value(StatusCode.INVALID_ARGUMENT));
+
+        assertThat(this.studentRepository.findById(4).orElseThrow().isEnabled()).isTrue();
+    }
+
+    @Test
+    void testInstructorReenablesDeactivatedStudentThroughUpdate() throws Exception {
+        // Given: John deactivated (the interim reactivation path, UC-STU-reactivate-student)
+        Student john = this.studentRepository.findById(4).orElseThrow();
+        john.setEnabled(false);
+        this.studentRepository.saveAndFlush(john);
+
+        Map<String, Object> studentDto = johnUpdate();
+        studentDto.put("enabled", true);
+
+        this.mockMvc.perform(put(this.baseUrl + "/students/4").contentType(MediaType.APPLICATION_JSON).content(this.jsonMapper.writeValueAsString(studentDto)).accept(MediaType.APPLICATION_JSON).header(HttpHeaders.AUTHORIZATION, this.instructorBillToken))
+                .andExpect(jsonPath("$.flag").value(true))
+                .andExpect(jsonPath("$.data.enabled").value(true));
     }
 
 //    @Test
