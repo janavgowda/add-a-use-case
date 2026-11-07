@@ -182,7 +182,8 @@ onMounted(async () => {
 async function loadStudents() {
   // On the back end, the page number starts from 0, so subtract 1 here
   const result: FindStudentByTeamIdResponse = await findStudentsByTeamId(teamId.value)
-  students.value = result.data
+  // Only active teammates are evaluated: a deactivated student is not (BR-student-lifecycle, UC-EVA-submit-evaluation)
+  students.value = result.data.filter((student) => student.enabled === true)
 }
 
 // Load criteria information
@@ -204,7 +205,12 @@ async function prepareStartingPeerEvaluations() {
 
   // If the student has already submitted evaluations for the current week, load them
   if (result.data.length > 0) {
-    peerEvalutions.value = result.data
+    // Leave out an evaluation of a teammate deactivated since it was written. It stays stored and counts in the
+    // reports, but it can no longer be changed, and sending it again would fail the whole update.
+    const activeTeammateIds = new Set(students.value.map((student) => student.id))
+    peerEvalutions.value = result.data.filter((evaluation) =>
+      activeTeammateIds.has(evaluation.evaluateeId)
+    )
     isNewSubmission = false
   } else {
     // If not, create a new set of evaluations
