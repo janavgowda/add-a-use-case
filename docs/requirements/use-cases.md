@@ -1528,7 +1528,7 @@ Details:
 
 **Associated Information:**
 - The course admin or instructor shall be able to cancel the use case at any time prior to submitting it.
-- Interim path, until this use case is designed and built: a course admin or instructor reactivates a student by switching her status to enabled in the edit-student form. That form can enable a student but never disable one, so deactivation happens only through UC-STU-deactivate-student, with its warning and confirmation. The interim path does not notify the student (step 6) and admits only an instructor assigned to the student's course section, not a course admin who is not assigned to it (BR-section-scoped-access); both gaps close when this use case is built.
+- Interim path, until this use case is designed and built: a course admin or instructor reactivates a student by switching her status to enabled in the edit-student form. That form can enable a student but never disable one, so deactivation happens only through UC-STU-deactivate-student, with its warning and confirmation. The interim path asks for no confirmation (step 4), does not notify the student (step 6), and admits only an instructor assigned to the student's course section, not a course admin who is not assigned to it (BR-section-scoped-access); these gaps close when this use case is built.
 
 **Related Use Cases:** UC-STU-delete-student: Delete a student; UC-STU-deactivate-student: Deactivate a student
 **Assumptions:**
